@@ -1,3 +1,3 @@
-# RNA_seq_pipeline
+# RNAseq analyses pipelines
 
-This file contains the scripts necessary to run the current version of the RNA-seq pipeline (based on the TCGA RNA-seq pipeline).
+Two RNAseq analyses pipelines used by the Sethupathy Lab.  The preferred pipeline to use going forward is the STAR/Salmon pipeline.
