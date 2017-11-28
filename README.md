@@ -13,7 +13,19 @@ While the code below will get you going on your RNAseq analysis, I would greatly
 [DESeq2 tutorial](http://bioconductor.org/packages/devel/bioc/vignettes/DESeq2/inst/doc/DESeq2.html)  
 
 #### Building indexes
-Need to update how to build STAR indexes
+
+Before aligning to the genome, you need to generate the indices for the genome. This has been done for mouse and human, and if you are aligning to those species, you can skip this section.
+
+The command looks something like this (untested):
+```
+/programs/STAR_2.4.2a/STAR \
+--runMode genomeGenerate \
+--runThreadN 8 \
+--genomeFastaFiles /proj/seth_lab/projects/genome/star_salmon_dev/mm9/mm9.fa \
+--genomeDir /proj/seth_lab/projects/genome/star_salmon_dev/mm9 \
+--sjdbGTFfile /proj/seth_lab/projects/genome/star_salmon_dev/mm9/mm9.gtf \
+--sjdbOverhang 100
+```
 
 #### Running STAR
 
