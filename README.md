@@ -139,5 +139,18 @@ human transcriptome: `/home/pr46_0001/projects/genome/GRCh38.p7/gencode.v25.tran
 bash SALMON_MultiSampleSubmission.sh
 ```
 
-Once STAR/Salmon is done running, we have our counts. We can now transfer the counts to our local machine to run the differential analysis.
+Once STAR/Salmon is done running, we have our counts. We can now collect the results and transfer the counts to our local machine to run the differential analysis.
 
+To collect the results, first add the directory of the lab scripts to the system path by typing this:
+```
+PATH=$PATH:/home/pr46_0001/shared/bin
+```
+
+In the directory containing the sequencing fastqs, run:
+```
+RNAseq_final.py
+```
+
+This will create a results directory that contains our counts, the STAR mapping stats, and the Salmon mapping stats.
+
+We can now move the results directory to our local computer for DESeq analysis.
