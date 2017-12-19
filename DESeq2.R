@@ -1,13 +1,28 @@
-# Only need to run this code the first time
-# source("https://bioconductor.org/biocLite.R")
-# biocLite("tximport")
-# biocLite("readr")
-# biocLite("tximportData")
-# biocLite("biomaRt")
-# biocLite("GenomicFeatures")
-# biocLite("DESeq2")
+###################################################################################################
+#
+#     Prelude: You only need to run this code the first time
+#
+###################################################################################################
 
-# import libraries
+source("https://bioconductor.org/biocLite.R")
+biocLite("tximport")
+biocLite("readr")
+biocLite("tximportData")
+biocLite("biomaRt")
+biocLite("GenomicFeatures")
+biocLite("DESeq2")
+install.packages("ggplot2")
+install.packages("gplots")
+install.packages("ggrepel")
+
+
+###################################################################################################
+#
+#     Set up working environment and import data
+#
+###################################################################################################
+
+## Load libraries (install if necessary)
 library(tximport)
 library(readr)
 library(GenomicFeatures)
@@ -17,21 +32,26 @@ library(ggplot2)
 library(gplots)
 library(ggrepel)
 
-# Change to location of results directory and samples.csv file
+## Change to location of results directory and samples.csv file
 setwd("/Users/Matthias/Dropbox/praveen/sequencing_projects/RNAseq_tutorial/")
-
 base_dir = getwd()
 
-# get sample info from metadata file
+# Create directory for output results
+dir.create(file.path(getwd(), 'DESeq_output'), showWarnings = FALSE)
+
+## Import sample and condition file
 samples = read.csv(file.path(base_dir, "samples.csv"), header = TRUE, stringsAsFactors=FALSE)
 samples$condition <- factor(samples$condition)
 samples$condition <- relevel()
+samples        # Prints the sample / condition list
 
-## make a TxDb object from transcript annotations
-## available as a GFF3 or GTF file
-## this dataset was mapped against mm10
-gtf="../rnaseq/gencode.vM10.annotation.gtf"
+## Make a TxDb object from transcript annotations
+## - available as a GFF3 or GTF file
+## - can be downloaded from gencode for mouse / human, ensembl for other species
+## - this dataset was mapped against mm10
 
+gtf="gencode.vM10.annotation.gtf"   # Download this file from here; ftp://cbsuftp.tc.cornell.edu/pr46ftp/tutorial_files/DESeq/
+                                    # then move to the working directory (where the script is)
 txdb=makeTxDbFromGFF(gtf,
                      format="gtf",
                      organism="Mus musculus",
@@ -42,44 +62,49 @@ df <- select(txdb, keys = k, keytype = "GENEID", columns = "TXNAME")
 tx2gene <- df[, 2:1]
 head(tx2gene)
 
-
-## IMPORT RESULTS WITH TXIMPORT
+## Import Salmon quant files and create counts table
 files <- file.path(base_dir, "results", samples$sample, "quant.sf")
-all(file.exists(files))        # Check to make sure names of files match names in samples.csv
+all(file.exists(files))        # Verify names of files match names in samples.csv, should return True
 names(files)=samples$sample
-txi <- tximport(files, type = "salmon", tx2gene = tx2gene)
-head(txi$counts)
+txi <- tximport(files, 
+                type = "salmon", 
+                tx2gene = tx2gene)
+head(txi$counts)               # This is the counts table for all of our samples
 
-
-# Now import the data into a DESeq Data Set (dds)
-
-#make sure the sample names and colnames are the same
+## Now to import the data into a DESeq Data Set (dds)
+## Verify that sample names and colnames are the same
 identical(samples$sample,colnames(txi$counts))
 
-# create a DEseqDataSet from txi's
+## Create a DEseqDataSet from txi count table
 dds <- DESeqDataSetFromTximport(txi, samples, ~condition)
 
+###################################################################################################
+#
+#    EXPLORATORY DATA ANALYSIS
+#
+###################################################################################################
 
-####### EXPLORATORY DATA ANALYSIS  ############################
-library(tidyr)
-
-# transform data to rlog
-rld <- rlog(dds, blind=TRUE)
-
-# SAMPLE TO SAMPLE DISTANCE & CORRELATION HEATMAPS
+library(tidyverse)
 library("RColorBrewer")
 library(pheatmap)
 
-# Sample correlation heatmap
-corr_samps <- cor(as.matrix(assay(rld)))
+## Set color palette for figures
 colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
 
+## Perform a rlog transformation on count data (essentially a puts on a log2 scale)
+## This helps our data assume a normal distribution and is good to do before these analyses
+rld <- rlog(dds, blind=TRUE)
+
+## Setup annotation file to show the conditions on the figures
 treat_ann <- samples
 rownames(treat_ann) <- treat_ann$sample
 treat_ann$sample <- NULL
-
 treat_ann
 
+## SAMPLE TO SAMPLE DISTANCE & CORRELATION HEATMAPS
+
+## Sample correlation heatmap
+corr_samps <- cor(as.matrix(assay(rld)))      # Computes pairwise correlations between samples based on gene expression
 png(filename="DESeq_output/DESeq_sampleCorr_HM.png", units = 'in', width = 8, height = 8, res = 250)
 pheatmap(corr_samps,
          annotation = treat_ann,
@@ -88,9 +113,7 @@ pheatmap(corr_samps,
 dev.off()
 
 # Sample distance heatmap
-sampleDists <- dist(t(assay(rld)))
-colors <- colorRampPalette( rev(brewer.pal(9, "Blues")) )(255)
-
+sampleDists <- dist(t(assay(rld)))            # Computes Euclidean distance between samples based on gene expression
 sampleDistMatrix <- as.matrix(sampleDists)
 
 png(filename="DESeq_output/DESeq_sampleDist_HM.png", units = 'in', width = 8, height = 8, res = 250)
@@ -102,8 +125,10 @@ pheatmap(sampleDistMatrix,
          main="Sample to Sample Distances")
 dev.off()
 
+## Principal Component Analysis
+## Separates samples based on variation between sample's gene expression
+## Greater variation will affect separation to a greater degree
 
-# Principal component analysis
 data <- plotPCA(rld, intgroup=c("condition"), returnData=TRUE)
 percentVar <- round(100 * attr(data, "percentVar"))
 
@@ -118,17 +143,16 @@ ggplot(data, aes(PC1, PC2, color=condition)) +
   ggtitle("")
 dev.off()
 
-### DIFFERENTIAL EXPRESSSION ANALYSIS  #################
-# DESeq = fx to calculate DE 
-dds <- DESeq(dds)
-
 ###################################################################################################
 #
 #   Get table to convert names
 #
 ###################################################################################################
 
-# Convert the ensembl gene ID to gene name ## SKIP FOR NOW ##
+## Convert the ensembl gene ID to gene name
+## This will require an active internet connection
+## Need to change according to species of interest
+
 mart<- useDataset("mmusculus_gene_ensembl", useMart("ensembl"))
 
 ensembl_2_geneName <- getBM(
@@ -137,8 +161,16 @@ ensembl_2_geneName <- getBM(
 head(ensembl_2_geneName)
 names(ensembl_2_geneName) <- c("GENEID", "geneName")
 
+###################################################################################################
+#
+#     DIFFERENTIAL EXPRESSSION ANALYSIS 
+#
+###################################################################################################
+## DESeq = fx to calculate DE
+## Combines multiple steps from DESeq
+dds <- DESeq(dds)
 
-### Write normalized counts to file
+## Write normalized counts to file
 normalized.counts <- as.data.frame(counts(dds, normalized=TRUE ))
 rownames(normalized.counts)<-sub("\\.[0-9]*", "", rownames(normalized.counts))
 head(normalized.counts)
@@ -155,7 +187,9 @@ write.table(normalized.counts, file = 'DESeq_output/DESeq_normalized_counts.csv'
 #  Getting fold changes from direct comparisons with control
 #
 ###################################################################################################
-##Highlight genes that have an absolute fold change > 2 and a p-value < Bonferroni cut-off
+
+## Volcano plot function
+## Will be used to visualize the differential expression of genes in the next section
 volcanoPlot <- function(df, line_val, fc_cut = 0, pv_cut = .05, padj_cut = .1) {
     log2_lim <- 10
     pval_lim <- 20
@@ -199,44 +233,44 @@ volcanoPlot <- function(df, line_val, fc_cut = 0, pv_cut = .05, padj_cut = .1) {
 ###################################################################################################
 library(dplyr)
 
-
-# Make comparison between conditions
+## Make comparison between conditions
 samples
 res <- results( dds, contrast = c("condition", "CondA", "Control") )
 head(res)
-
 
 ## Add gene name to res file
 rownames(res)<-sub("\\.[0-9]*", "", rownames(res))
 idx <- match( rownames(res), ensembl_2_geneName$GENEID )
 res$geneName <- ensembl_2_geneName$geneName[ idx ]
 
-# Filter to remove genes with a baseMean of 5 or less
+## Filter to remove genes with a baseMean of 5 or less
+## baseMean is the average expression for that gene across all samples
 res.5<-res[res$baseMean>5, ]
 
-## Adjust p-value according to Benjamini & Hochberg method (need to do this since we filtered out by base mean 5 above)
+## Adjust p-value according to Benjamini & Hochberg method (need to do this since we filtered out genes by base mean 5 above)
 res.5$padj <- p.adjust(res.5$pvalue, method="BH")
 
-# Remove lines where pvalue is NA
+## Remove lines where pvalue is NA
 res.5 <- res.5[!is.na(res.5$pvalue),]
 
-# Check results
+## Check number of differentially expressed genes
 as.data.frame(res.5) %>% filter(pvalue < .05) %>% dim()                       # Number of sig genes by p-value
-as.data.frame(res.5) %>% filter(pvalue < .05 & log2FoldChange < 0) %>% dim()  # Number of sig down genes by padj
-as.data.frame(res.5) %>% filter(pvalue < .05 & log2FoldChange > 0) %>% dim()  # Number of sig up genes by padj
+as.data.frame(res.5) %>% filter(pvalue < .05 & log2FoldChange < 0) %>% dim()  # Number of sig down genes by p-value
+as.data.frame(res.5) %>% filter(pvalue < .05 & log2FoldChange > 0) %>% dim()  # Number of sig up genes by p-value
 
 ## Write res.cont DESeq data to output file
 write.csv(res.5, file="DESeq_output/DESeq_CONDAvsCONTROL.csv", quote=F, row.names = F)
 
-# Get genelist for miRhub
+## Construct gene list for miRhub
 as.data.frame(res.5) %>%
-  filter(pvalue < .05 & log2FoldChange > 0) %>%
-  mutate(Name = toupper(geneName)) %>%
-  pull(Name) %>%
-  as.vector() %>%
-  write.table(., file = 'DESeq_output/DEG_CONDAvsCONTROL_up_PVAL.05.txt', quote = F, row.name = F, col.names = F)
+  filter(pvalue < .05) %>%                  # p-value must be less than .05
+  filter(log2FoldChange > 0) %>%            # log2FoldChange must be positive (aka upregulated genes)
+  mutate(Name = toupper(geneName)) %>%      # Capitalize gene names
+  pull(Name) %>%                            # Take only gene names column
+  as.vector() %>%                           # Set as vector
+  write.table(., file = 'DESeq_output/DEG_CONDAvsCONTROL_up_PVAL.05.txt', quote = F, row.name = F, col.names = F)     # Write to file
 
-# Volcano plot
+## Volcano plot
 png('DESeq_output/DEG_CONDAvsCONTROL_VolcanoPlot.png', units = 'in', width = 6, height = 6, res = 250)
 g <- volcanoPlot(res.5)
 g
@@ -255,32 +289,34 @@ rownames(res)<-sub("\\.[0-9]*", "", rownames(res))
 idx <- match( rownames(res), ensembl_2_geneName$GENEID )
 res$geneName <- ensembl_2_geneName$geneName[ idx ]
 
-# Filter to remove genes with a baseMean of 5 or less
+## Filter to remove genes with a baseMean of 5 or less
+## baseMean is the average expression for that gene across all samples
 res.5<-res[res$baseMean>5, ]
 
 ## Adjust p-value according to Benjamini & Hochberg method (need to do this since we filtered out by base mean 5 above)
 res.5$padj <- p.adjust(res.5$pvalue, method="BH")
 
-# Remove lines where pvalue is NA
+## Remove lines where pvalue is NA
 res.5 <- res.5[!is.na(res.5$pvalue),]
 
-# Check results
+## Check number of differentially expressed genes
 as.data.frame(res.5) %>% filter(pvalue < .05) %>% dim()                       # Number of sig genes by p-value
-as.data.frame(res.5) %>% filter(pvalue < .05 & log2FoldChange < 0) %>% dim()  # Number of sig down genes by padj
-as.data.frame(res.5) %>% filter(pvalue < .05 & log2FoldChange > 0) %>% dim()  # Number of sig up genes by padj
+as.data.frame(res.5) %>% filter(pvalue < .05 & log2FoldChange < 0) %>% dim()  # Number of sig down genes by p-value
+as.data.frame(res.5) %>% filter(pvalue < .05 & log2FoldChange > 0) %>% dim()  # Number of sig up genes by p-value
 
 ## Write res.cont DESeq data to output file
 write.csv(res.5, file="DESeq_output/DESeq_CONDBvsCONTROL.csv", quote=F, row.names = F)
 
-# Get genelist for miRhub
+## Construct gene list for miRhub
 as.data.frame(res.5) %>%
-  filter(pvalue < .05 & log2FoldChange > 0) %>%
-  mutate(Name = toupper(geneName)) %>%
-  pull(Name) %>%
-  as.vector() %>%
-  write.table(., file = 'DESeq_output/DEG_CONDBvsCONTROL_up_PVAL.05.txt', quote = F, row.name = F, col.names = F)
+  filter(pvalue < .05) %>%                  # p-value must be less than .05
+  filter(log2FoldChange > 0) %>%            # log2FoldChange must be positive (aka upregulated genes)
+  mutate(Name = toupper(geneName)) %>%      # Capitalize gene names
+  pull(Name) %>%                            # Take only gene names column
+  as.vector() %>%                           # Set as vector
+  write.table(., file = 'DESeq_output/DEG_CONDBvsCONTROL_up_PVAL.05.txt', quote = F, row.name = F, col.names = F)     # Write to file
 
-# Volcano plot
+## Volcano plot
 png('DESeq_output/DEG_CONDBvsCONTROL_VolcanoPlot.png', units = 'in', width = 6, height = 6, res = 250)
 g <- volcanoPlot(res.5)
 g
