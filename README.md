@@ -153,4 +153,6 @@ RNAseq_final.py
 
 This will create a results directory that contains our counts, the STAR mapping stats, and the Salmon mapping stats.
 
-We can now move the results directory to our local computer for DESeq analysis.
+We can now move the results directory to our local computer for DESeq analysis. The DESeq script is commented with further instructions.
+
+If anything is unclear, email me with your questions. -Matt
