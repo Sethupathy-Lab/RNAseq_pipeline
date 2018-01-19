@@ -1,0 +1,7 @@
+sample,condition
+SampleA.,CondB
+SampleB.,CondA
+SampleC.,Control
+SampleD.,Control
+SampleE.,CondB
+SampleF.,CondA
